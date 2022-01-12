@@ -3,7 +3,7 @@ package idtools
 import (
 	"os"
 
-	"github.com/bhojpur/kernel/pkg/system"
+	"github.com/bhojpur/host/pkg/filesys"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 // Ownership is handled elsewhere, but in the future could be support here
 // too.
 func mkdirAs(path string, mode os.FileMode, owner Identity, mkAll, chownExisting bool) error {
-	if err := system.MkdirAll(path, mode); err != nil {
+	if err := filesys.MkdirAll(path, mode); err != nil {
 		return err
 	}
 	return nil

@@ -13,7 +13,9 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/bhojpur/kernel/pkg/system"
+	filesys "github.com/bhojpur/host/pkg/filesys"
+	process "github.com/bhojpur/host/pkg/process"
+	statistics "github.com/bhojpur/host/pkg/statistics"
 	"github.com/opencontainers/runc/libcontainer/user"
 	"github.com/pkg/errors"
 )
@@ -31,7 +33,7 @@ func mkdirAs(path string, mode os.FileMode, owner Identity, mkAll, chownExisting
 
 	var paths []string
 
-	stat, err := system.Stat(path)
+	stat, err := statistics.Stat(path)
 	if err == nil {
 		if !stat.IsDir() {
 			return &os.PathError{Op: "mkdir", Path: path, Err: syscall.ENOTDIR}
@@ -61,7 +63,7 @@ func mkdirAs(path string, mode os.FileMode, owner Identity, mkAll, chownExisting
 				paths = append(paths, dirPath)
 			}
 		}
-		if err := system.MkdirAll(path, mode); err != nil {
+		if err := filesys.MkdirAll(path, mode); err != nil {
 			return err
 		}
 	} else {
@@ -82,7 +84,7 @@ func mkdirAs(path string, mode os.FileMode, owner Identity, mkAll, chownExisting
 // CanAccess takes a valid (existing) directory and a uid, gid pair and determines
 // if that uid, gid pair has access (execute bit) to the directory
 func CanAccess(path string, pair Identity) bool {
-	statInfo, err := system.Stat(path)
+	statInfo, err := statistics.Stat(path)
 	if err != nil {
 		return false
 	}
@@ -195,7 +197,7 @@ func callGetent(database, key string) (io.Reader, error) {
 	}
 	out, err := execCmd(getentCmd, database, key)
 	if err != nil {
-		exitCode, errC := system.GetExitCode(err)
+		exitCode, errC := process.GetExitCode(err)
 		if errC != nil {
 			return nil, err
 		}
@@ -218,10 +220,10 @@ func callGetent(database, key string) (io.Reader, error) {
 // Normally a Chown is a no-op if uid/gid match, but in some cases this can still cause an error, e.g. if the
 // dir is on an NFS share, so don't call chown unless we absolutely must.
 // Likewise for setting permissions.
-func setPermissions(p string, mode os.FileMode, uid, gid int, stat *system.StatT) error {
+func setPermissions(p string, mode os.FileMode, uid, gid int, stat *statistics.StatT) error {
 	if stat == nil {
 		var err error
-		stat, err = system.Stat(p)
+		stat, err = statistics.Stat(p)
 		if err != nil {
 			return err
 		}
