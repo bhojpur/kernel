@@ -25,10 +25,11 @@ package main
 
 import (
 	cmd "github.com/bhojpur/kernel/cmd/client"
-
-	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	"github.com/sirupsen/logrus"
 )
 
 func main() {
-	cmd.Execute()
+	if err := cmd.RootCmd.Execute(); err != nil {
+		logrus.WithError(err).Fatalf("Bhojpur Kernel failed")
+	}
 }
