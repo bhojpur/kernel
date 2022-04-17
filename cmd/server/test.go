@@ -33,7 +33,7 @@ import (
 // testCmd represents the test command
 var testCmd = &cobra.Command{
 	Use:   "test",
-	Short: "test likes Go test, but running in qemu",
+	Short: "tests likes Go test, but running in QEMU",
 	Run: func(cmd *cobra.Command, args []string) {
 		err := runTest()
 		if err != nil {

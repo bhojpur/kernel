@@ -32,7 +32,7 @@ import (
 )
 
 const (
-	bhojpurModulePath = "github.com/bhojpur/kernel/pkg/engine"
+	bhojpurModulePath = "github.com/bhojpur/kernel/pkg/base"
 	bhojpurImportFile = "import_bhojpur.go"
 	overlayFile       = "overlay.json"
 )
@@ -42,7 +42,7 @@ var (
 	//+build bhojpur
 
 	package {{.name}}
-	import _ "github.com/bhojpur/kernel/pkg/engine"
+	import _ "github.com/bhojpur/kernel/pkg/base"
 	`))
 )
 

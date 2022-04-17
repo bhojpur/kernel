@@ -124,7 +124,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestGetImportSelf(t *testing.T) {
-	imp, err := getImport("go", "github.com/bhojpur/kernel/builder/parse/testdata/importself", "")
+	imp, err := getImport("go", "github.com/bhojpur/kernel/pkg/builder/parse/testdata/importself", "")
 	if err != nil {
 		t.Fatal(err)
 	}

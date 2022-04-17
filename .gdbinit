@@ -10,8 +10,8 @@ define xbt
     set $save_pc = $pc
     set $save_sp = $sp
     select-frame 0
-    set $pc = 'github.com/bhojpur/kernel/pkg/engine/kernel.threads'[$tid].tf.IP
-    set $sp = 'github.com/bhojpur/kernel/pkg/engine/kernel.threads'[$tid].tf.SP
+    set $pc = 'github.com/bhojpur/kernel/pkg/base/kernel.threads'[$tid].tf.IP
+    set $sp = 'github.com/bhojpur/kernel/pkg/base/kernel.threads'[$tid].tf.SP
     bt
 
     set $pc = $save_pc
@@ -21,7 +21,7 @@ end
 define xps
     set $i = 0
     while $i < 20
-        set $t = 'github.com/bhojpur/kernel/pkg/engine/kernel.threads'[$i]
+        set $t = 'github.com/bhojpur/kernel/pkg/base/kernel.threads'[$i]
         set $addr = 0
         if $t.tf != 0
             set $addr = $t.tf.IP

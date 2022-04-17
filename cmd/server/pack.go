@@ -51,7 +51,7 @@ var (
 // packCmd represents the pack command
 var packCmd = &cobra.Command{
 	Use:   "pack",
-	Short: "pack Bhojpur Kernel to release format, e.g., iso",
+	Short: "pack Bhojpur Kernel to release format (e.g., iso)",
 	Run: func(cmd *cobra.Command, args []string) {
 		err := runPackage()
 		if err != nil {

@@ -327,7 +327,7 @@ Options:
 
 const dotDirectory = "."
 
-// Invoke runs Builder with the given arguments.
+// Invoke runs Builder Tool with the given arguments.
 func Invoke(inv Invocation) int {
 	errlog := log.New(inv.Stderr, "", 0)
 	if inv.GoCmd == "" {
@@ -337,7 +337,7 @@ func Invoke(inv Invocation) int {
 	if inv.Dir == "" {
 		noDir = true
 		inv.Dir = dotDirectory
-		// . will be default unless we find a builder folder.
+		// . will be default unless we find a Builder folder.
 		mfSt, err := os.Stat(BuilderfilesDirName)
 		if err == nil {
 			if mfSt.IsDir() {

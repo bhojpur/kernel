@@ -73,7 +73,7 @@ func Kernel() error {
 	utils.Deps(BhojpurKernel)
 
 	detectGoVersion()
-	return rundir("app", nil, kernelBin, "build", "-o", "../kernel.elf",
+	return rundir("pkg/base/app", nil, kernelBin, "build", "-o", "../../../kernel.elf",
 		"-gcflags", GOGCFLAGS,
 		"-tags", GOTAGS,
 		"./kmain")
@@ -169,7 +169,7 @@ func GraphicDebug() error {
 }
 
 func BhojpurKernel() error {
-	err := rundir("cmd", nil, "go", "build", "-o", "../kernel", "./kernel")
+	err := rundir("pkg/base/cmd", nil, "go", "build", "-o", "../../../kernel", "./pkg/base/kernel")
 	if err != nil {
 		return err
 	}

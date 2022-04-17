@@ -27,7 +27,7 @@ import (
 	"github.com/rakyll/statik/fs"
 )
 
-//go:generate statik -m -src=./files -dest .. -p assets
+//go:generate statik -f -m -src=./files -dest .. -p assets
 
 var (
 	rootfs http.FileSystem
