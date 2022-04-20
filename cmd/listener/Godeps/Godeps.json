@@ -1,0 +1,9 @@
+{
+	"ImportPath": "github.com/bhojpur/kernel/cmd/listener",
+	"GoVersion": "go1.17",
+	"GodepVersion": "v63",
+	"Packages": [
+		"./..."
+	],
+	"Deps": []
+}

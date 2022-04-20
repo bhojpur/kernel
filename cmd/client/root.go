@@ -22,284 +22,183 @@ package cmd
 
 import (
 	"bytes"
-	"context"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
-	"net/url"
+	"io/ioutil"
 	"os"
-	"path/filepath"
-	"strings"
-	"sync"
+	"runtime"
+	"sort"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/bhojpur/kernel/pkg/config"
+	"github.com/bhojpur/kernel/pkg/types"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/tools/portforward"
-	"k8s.io/client-go/transport/spdy"
+	"gopkg.in/yaml.v2"
 )
 
-var (
-	verbose bool
-	host    string
-)
+var clientConfigFile, hubConfigFile, host string
+var port int
 
-var rootCmdOpts struct {
-	Verbose          bool
-	Host             string
-	Kubeconfig       string
-	K8sNamespace     string
-	K8sLabelSelector string
-	K8sPodPort       string
-	DialMode         string
+var RootCmd = &cobra.Command{
+	Use:   "kernctl",
+	Short: "The unikernel compilation, deployment, and management tool",
+	Long: `Bhojpur Kernel is a tool for compiling application source code
+into bootable disk images. Bhojpur Kernel also runs and manages unikernel
+instances across infrastructures.
+Create a client configuration file with 'kernctl target'
+You may set a custom client configuration file
+with the global flag --client-config=<path>`,
 }
 
-// rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
-	Use:   "kernel",
-	Short: "Bhojpur Kernel is a virtualization engine used by Bhojpur.NET Platform",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		if verbose {
-			log.SetLevel(log.DebugLevel)
-			log.Debug("verbose logging enabled")
-		}
-	},
-}
-
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+func getHomeDir() string {
+	if runtime.GOOS == "windows" {
+		return os.Getenv("USERPROFILE")
+	} else {
+		return os.Getenv("HOME")
 	}
 }
-
-type dialMode string
-
-const (
-	dialModeHost       = "host"
-	dialModeKubernetes = "kubernetes"
-)
 
 func init() {
-	kernelHost := os.Getenv("KERNEL_HOST")
-	if kernelHost == "" {
-		kernelHost = "localhost:7777"
+	RootCmd.PersistentFlags().StringVar(&clientConfigFile, "client-config", getHomeDir()+"/.bhojpur/client-config.yaml", "client config file")
+	RootCmd.PersistentFlags().StringVar(&hubConfigFile, "hub-config", getHomeDir()+"/.bhojpur/hub-config.yaml", "hub config file")
+	RootCmd.PersistentFlags().StringVar(&host, "host", "", "<string, optional>: host/ip address of the host running the Bhojpur Kernel daemon")
+	targetCmd.Flags().IntVar(&port, "port", 3000, "<int, optional>: port the daemon is running on (default: 3000)")
+}
+
+var clientConfig config.ClientConfig
+
+func readClientConfig() error {
+	data, err := ioutil.ReadFile(clientConfigFile)
+	if err != nil {
+		logrus.WithError(err).Errorf("failed to read client configuration file at " + clientConfigFile + `
+Try setting your config with 'kernctl target --host HOST_URL'`)
+		return err
 	}
-	kernelKubeconfig := os.Getenv("KUBECONFIG")
-	if kernelKubeconfig == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			log.WithError(err).Warn("cannot determine user's home directory")
-		} else {
-			kernelKubeconfig = filepath.Join(home, ".kube", "config")
+	data = bytes.Replace(data, []byte("\n"), []byte{}, -1)
+	if err := yaml.Unmarshal(data, &clientConfig); err != nil {
+		logrus.WithError(err).Errorf("failed to parse client configuration yaml at " + clientConfigFile + `
+Please ensure config file contains valid yaml.'\n
+Try setting your config with 'kernctl target --host HOST_URL'`)
+		return err
+	}
+	return nil
+}
+
+type imageSlice []*types.Image
+
+func (p imageSlice) Len() int           { return len(p) }
+func (p imageSlice) Less(i, j int) bool { return p[i].Name < p[j].Name }
+func (p imageSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
+// Sort is a convenience method.
+func (p imageSlice) Sort() { sort.Sort(p) }
+
+func printImages(images ...*types.Image) {
+	sortedImages := make(imageSlice, len(images))
+	for i, image := range images {
+		sortedImages[i] = image
+	}
+	sortedImages.Sort()
+	fmt.Printf("%-20s %-20s %-15s %-30s %-6s %-20s\n", "NAME", "ID", "INFRASTRUCTURE", "CREATED", "SIZE(MB)", "MOUNTPOINTS")
+	for _, image := range sortedImages {
+		printImage(image)
+	}
+}
+
+func printImage(image *types.Image) {
+	for i, deviceMapping := range image.RunSpec.DeviceMappings {
+		//ignore root device mount point
+		if deviceMapping.MountPoint == "/" {
+			image.RunSpec.DeviceMappings = append(image.RunSpec.DeviceMappings[:i], image.RunSpec.DeviceMappings[i+1:]...)
 		}
 	}
-	kernelNamespace := os.Getenv("KERNEL_K8S_NAMESPACE")
-	kernelLabelSelector := os.Getenv("KERNEL_K8S_LABEL")
-	if kernelLabelSelector == "" {
-		kernelLabelSelector = "app.kubernetes.io/name=kernel"
-	}
-	kernelPodPort := os.Getenv("KERNEL_K8S_POD_PORT")
-	if kernelPodPort == "" {
-		kernelPodPort = "7777"
-	}
-	dialMode := os.Getenv("KERNEL_DIAL_MODE")
-	if dialMode == "" {
-		dialMode = string(dialModeHost)
-	}
-
-	rootCmd.PersistentFlags().BoolVar(&rootCmdOpts.Verbose, "verbose", false, "en/disable verbose logging")
-	rootCmd.PersistentFlags().StringVar(&rootCmdOpts.DialMode, "dial-mode", dialMode, "dial mode that determines how we connect to Bhojpur Kernel. Valid values are \"host\" or \"kubernetes\" (defaults to KERNEL_DIAL_MODE env var).")
-	rootCmd.PersistentFlags().StringVar(&rootCmdOpts.Host, "host", kernelHost, "[host dial mode] Bhojpur Kernel host to talk to (defaults to KERNEL_HOST env var)")
-	rootCmd.PersistentFlags().StringVar(&rootCmdOpts.Kubeconfig, "kubeconfig", kernelKubeconfig, "[kubernetes dial mode] kubeconfig file to use (defaults to KUEBCONFIG env var)")
-	rootCmd.PersistentFlags().StringVar(&rootCmdOpts.K8sNamespace, "k8s-namespace", kernelNamespace, "[kubernetes dial mode] Kubernetes namespace in which to look for the Bhojpur Kernel pods (defaults to KERNEL_K8S_NAMESPACE env var, or configured kube context namespace)")
-	// The following are such specific flags that really only matters if one doesn't use the stock helm charts.
-	// They can still be set using an env var, but there's no need to clutter the CLI with them.
-	rootCmdOpts.K8sLabelSelector = kernelLabelSelector
-	rootCmdOpts.K8sPodPort = kernelPodPort
-}
-
-type closableGrpcClientConnInterface interface {
-	grpc.ClientConnInterface
-	io.Closer
-}
-
-func dial() (res closableGrpcClientConnInterface) {
-	var err error
-	switch rootCmdOpts.DialMode {
-	case dialModeHost:
-		res, err = grpc.Dial(rootCmdOpts.Host, grpc.WithInsecure())
-	case dialModeKubernetes:
-		res, err = dialKubernetes()
-	default:
-		log.Fatalf("unknown dial mode: %s", rootCmdOpts.DialMode)
-	}
-
-	if err != nil {
-		log.WithError(err).Fatal("cannot connect to Bhojpur Kernel server")
-	}
-	return
-}
-
-func dialKubernetes() (closableGrpcClientConnInterface, error) {
-	kubecfg, namespace, err := getKubeconfig(rootCmdOpts.Kubeconfig)
-	if err != nil {
-		return nil, fmt.Errorf("cannot load kubeconfig %s: %w", rootCmdOpts.Kubeconfig, err)
-	}
-	if rootCmdOpts.K8sNamespace != "" {
-		namespace = rootCmdOpts.K8sNamespace
-	}
-
-	clientSet, err := kubernetes.NewForConfig(kubecfg)
-	if err != nil {
-		return nil, err
-	}
-
-	pod, err := findKernelPod(clientSet, namespace, rootCmdOpts.K8sLabelSelector)
-	if err != nil {
-		return nil, fmt.Errorf("cannot find Bhojpur Kernel pod: %w", err)
-	}
-
-	localPort, err := findFreeLocalPort()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	readychan, errchan := forwardPort(ctx, kubecfg, namespace, pod, fmt.Sprintf("%d:%s", localPort, rootCmdOpts.K8sPodPort))
-	select {
-	case err := <-errchan:
-		cancel()
-		return nil, err
-	case <-readychan:
-	}
-
-	res, err := grpc.Dial(fmt.Sprintf("localhost:%d", localPort), grpc.WithInsecure())
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("cannot dial forwarded connection: %w", err)
-	}
-
-	return closableConn{
-		ClientConnInterface: res,
-		Closer:              func() error { cancel(); return nil },
-	}, nil
-}
-
-type closableConn struct {
-	grpc.ClientConnInterface
-	Closer func() error
-}
-
-func (c closableConn) Close() error {
-	return c.Closer()
-}
-
-func findFreeLocalPort() (int, error) {
-	const (
-		start = 30000
-		end   = 60000
-	)
-	for p := start; p <= end; p++ {
-		l, err := net.Listen("tcp", fmt.Sprintf(":%d", p))
-		if err == nil {
-			l.Close()
-			return p, nil
+	if len(image.RunSpec.DeviceMappings) == 0 {
+		fmt.Printf("%-20.20s %-20.20s %-15.15s %-30.30s %-8.0d \n", image.Name, image.Id, image.Infrastructure, image.Created.String(), image.SizeMb)
+	} else if len(image.RunSpec.DeviceMappings) > 0 {
+		fmt.Printf("%-20.20s %-20.20s %-15.15s %-30.30s %-8.0d %-20.20s\n", image.Name, image.Id, image.Infrastructure, image.Created.String(), image.SizeMb, image.RunSpec.DeviceMappings[0].MountPoint)
+		if len(image.RunSpec.DeviceMappings) > 1 {
+			for i := 1; i < len(image.RunSpec.DeviceMappings); i++ {
+				fmt.Printf("%102s\n", image.RunSpec.DeviceMappings[i].MountPoint)
+			}
 		}
 	}
-	return 0, fmt.Errorf("no free local port found")
 }
 
-// GetKubeconfig loads kubernetes connection config from a kubeconfig file
-func getKubeconfig(kubeconfig string) (res *rest.Config, namespace string, err error) {
-	cfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig},
-		&clientcmd.ConfigOverrides{},
-	)
-	namespace, _, err = cfg.Namespace()
-	if err != nil {
-		return nil, "", err
-	}
+type userImageSlice []*types.UserImage
 
-	res, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-	if err != nil {
-		return nil, namespace, err
-	}
+func (p userImageSlice) Len() int           { return len(p) }
+func (p userImageSlice) Less(i, j int) bool { return p[i].Name < p[j].Name }
+func (p userImageSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
-	return res, namespace, nil
+// Sort is a convenience method.
+func (p userImageSlice) Sort() { sort.Sort(p) }
+
+func printUserImages(images ...*types.UserImage) {
+	sortedImages := make(userImageSlice, len(images))
+	for i, image := range images {
+		sortedImages[i] = image
+	}
+	sortedImages.Sort()
+	fmt.Printf("%-20s %-20s %-15s %-30s %-6s %-20s\n", "NAME", "OWNER", "INFRASTRUCTURE", "CREATED", "SIZE(MB)", "MOUNTPOINTS")
+	for _, image := range sortedImages {
+		printUserImage(image)
+	}
 }
 
-// findKernelPod returns the first pod we found for a particular component
-func findKernelPod(clientSet kubernetes.Interface, namespace, selector string) (podName string, err error) {
-	pods, err := clientSet.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
-		LabelSelector: selector,
-	})
-	if err != nil {
-		return "", err
+func printUserImage(image *types.UserImage) {
+	for i, deviceMapping := range image.RunSpec.DeviceMappings {
+		//ignore root device mount point
+		if deviceMapping.MountPoint == "/" {
+			image.RunSpec.DeviceMappings = append(image.RunSpec.DeviceMappings[:i], image.RunSpec.DeviceMappings[i+1:]...)
+		}
 	}
-	if len(pods.Items) == 0 {
-		return "", fmt.Errorf("no pod in %s with label component=%s", namespace, selector)
+	if len(image.RunSpec.DeviceMappings) == 0 {
+		fmt.Printf("%-20.20s %-20.20s %-15.15s %-30.30s %-8.0d \n", image.Name, image.Owner, image.Infrastructure, image.Created.String(), image.SizeMb)
+	} else if len(image.RunSpec.DeviceMappings) > 0 {
+		fmt.Printf("%-20.20s %-20.20s %-15.15s %-30.30s %-8.0d %-20.20s\n", image.Name, image.Owner, image.Infrastructure, image.Created.String(), image.SizeMb, image.RunSpec.DeviceMappings[0].MountPoint)
+		if len(image.RunSpec.DeviceMappings) > 1 {
+			for i := 1; i < len(image.RunSpec.DeviceMappings); i++ {
+				fmt.Printf("%102s\n", image.RunSpec.DeviceMappings[i].MountPoint)
+			}
+		}
 	}
-	return pods.Items[0].Name, nil
 }
 
-// ForwardPort establishes a TCP port forwarding to a Kubernetes pod
-func forwardPort(ctx context.Context, config *rest.Config, namespace, pod, port string) (readychan chan struct{}, errchan chan error) {
-	errchan = make(chan error, 1)
-	readychan = make(chan struct{}, 1)
+type instanceSlice []*types.Instance
 
-	roundTripper, upgrader, err := spdy.RoundTripperFor(config)
-	if err != nil {
-		errchan <- err
-		return
+func (p instanceSlice) Len() int           { return len(p) }
+func (p instanceSlice) Less(i, j int) bool { return p[i].Name < p[j].Name }
+func (p instanceSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
+// Sort is a convenience method.
+func (p instanceSlice) Sort() { sort.Sort(p) }
+
+func printInstances(instances ...*types.Instance) {
+	sortedInstances := make(instanceSlice, len(instances))
+	for i, instance := range instances {
+		sortedInstances[i] = instance
 	}
-
-	path := fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/portforward", namespace, pod)
-	hostIP := strings.TrimLeft(config.Host, "https://")
-	serverURL := url.URL{Scheme: "https", Path: path, Host: hostIP}
-	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: roundTripper}, http.MethodPost, &serverURL)
-
-	stopChan := make(chan struct{}, 1)
-	fwdReadyChan := make(chan struct{}, 1)
-	out, errOut := new(bytes.Buffer), new(bytes.Buffer)
-	forwarder, err := portforward.New(dialer, []string{port}, stopChan, fwdReadyChan, out, errOut)
-	if err != nil {
-		panic(err)
+	sortedInstances.Sort()
+	fmt.Printf("%-15s %-20s %-14s %-30s %-20s %-15s %-12s\n",
+		"NAME", "ID", "INFRASTRUCTURE", "CREATED", "IMAGE", "IPADDRESS", "STATE")
+	for _, instance := range sortedInstances {
+		printInstance(instance)
 	}
+}
 
-	var once sync.Once
-	go func() {
-		err := forwarder.ForwardPorts()
-		if err != nil {
-			errchan <- err
-		}
-		once.Do(func() { close(readychan) })
-	}()
+func printInstance(instance *types.Instance) {
+	fmt.Printf("%-15.15s %-20.20s %-14.14s %-30.30s %-20.20v %-15.15s %-12.12s\n",
+		instance.Name, instance.Id, instance.Infrastructure, instance.Created.String(), instance.ImageId, instance.IpAddress, instance.State)
+}
 
-	go func() {
-		select {
-		case <-readychan:
-			// we're out of here
-		case <-ctx.Done():
-			close(stopChan)
-		}
-	}()
+func printVolumes(volume ...*types.Volume) {
+	fmt.Printf("%-15.15s %-15.15s %-14.14s %-30.30s %-20.20v %-12.12s\n",
+		"NAME", "ID", "INFRASTRUCTURE", "CREATED", "ATTACHED-INSTANCE", "SIZE(MB)")
+	for _, volume := range volume {
+		printVolume(volume)
+	}
+}
 
-	go func() {
-		for range fwdReadyChan {
-		}
-
-		if errOut.Len() != 0 {
-			errchan <- fmt.Errorf(errOut.String())
-			return
-		}
-
-		once.Do(func() { close(readychan) })
-	}()
-
-	return
+func printVolume(volume *types.Volume) {
+	fmt.Printf("%-15.15s %-15.15s %-14.14s %-30.30s %-20.20v %-12.12d\n",
+		volume.Name, volume.Id, volume.Infrastructure, volume.Created.String(), volume.Attachment, volume.SizeMb)
 }

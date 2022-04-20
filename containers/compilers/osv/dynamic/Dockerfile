@@ -1,13 +1,13 @@
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
 # Install prerequisites
 RUN apt-get update -y
 RUN apt-get install -y curl git qemu
 
 # Install Go
-RUN curl https://storage.googleapis.com/golang/go1.7.4.linux-amd64.tar.gz | tar xz -C /usr/local && \
-    mv /usr/local/go /usr/local/go1.7 && \
-    ln -s /usr/local/go1.7 /usr/local/go
+RUN curl https://storage.googleapis.com/golang/go1.18.1.linux-amd64.tar.gz | tar xz -C /usr/local && \
+    mv /usr/local/go /usr/local/go1.18.1 && \
+    ln -s /usr/local/go1.18.1 /usr/local/go
 ENV GOPATH=/go
 ENV GOBIN=$GOPATH/bin
 ENV PATH=$GOBIN:/usr/local/go/bin:$PATH

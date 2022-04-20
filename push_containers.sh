@@ -1,0 +1,2 @@
+#!/bin/bash
+for i in $(printf "%s\n" $(cat containers/versions.json | jq -r 'keys[]')); do echo "pushing bhojpur/$i:$(cat containers/versions.json  | jq .['$arg'] -r --arg arg $i)" && docker push bhojpur/$i:$(cat containers/versions.json  | jq .['$arg'] -r --arg arg $i); done

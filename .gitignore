@@ -49,7 +49,7 @@ __pycache__/
 containers/container-versions.go
 _debug
 
-instance-listener/bindata/
+cmd/listener/bindata/
 
 # Swap
 [._]*.s[a-v][a-z]

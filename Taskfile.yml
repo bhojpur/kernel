@@ -108,6 +108,8 @@ tasks:
         desc: Generate Go source code
         cmds:
         - GOFLAGS=-mod=mod go generate ./...
+        - GOFLAGS=-mod=mod go-bindata -pkg bindata -o ./cmd/listener/bindata/instance_listener_data.go --ignore=./cmd/listener/bindata/ ./cmd/listener/...
+        - GOFLAGS=-mod=mod go-bindata -pkg versiondata -o ./containers/container-versions.go containers/versions.json
 
     test:
         desc: Execute all the Unit Tests

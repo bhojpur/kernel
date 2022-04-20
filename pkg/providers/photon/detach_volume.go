@@ -1,4 +1,4 @@
-package cmd
+package photon
 
 // Copyright (c) 2018 Bhojpur Consulting Private Limited, India. All rights reserved.
 
@@ -20,20 +20,8 @@ package cmd
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import (
-	"github.com/bhojpur/kernel/pkg/version"
-	"github.com/spf13/cobra"
-)
+import "github.com/bhojpur/kernel/pkg/util/errors"
 
-// versionCmd represents the version command
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Prints the version of this Bhojpur Kernel binary executable image",
-	Run: func(cmd *cobra.Command, args []string) {
-		version.Print()
-	},
-}
-
-func init() {
-	rootCmd.AddCommand(versionCmd)
+func (p *PhotonProvider) DetachVolume(id string) error {
+	return errors.New("not yet supportded for photon", nil)
 }
