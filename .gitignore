@@ -38,13 +38,11 @@ _testmain.go
 *.exe
 *.test
 *.prof
-kernel
 vbox-instancelistener-base.vmdk
 VboxBhojpurInstanceListener/
 vbox-instancelistener-copy.vmdk
 tmp/
 test/scripts/build.out
-kernel
 __pycache__/
 containers/container-versions.go
 _debug

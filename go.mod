@@ -8,7 +8,6 @@ require (
 	github.com/dj456119/go-cowsay v0.0.5
 	github.com/djannot/aws-sdk-go v1.1.34
 	github.com/docker/docker v20.10.14+incompatible
-	github.com/emc-advanced-dev/pkg v0.0.0-20171113192629-1fa4551051c1
 	github.com/firecracker-microvm/firecracker-go-sdk v0.22.0
 	github.com/fogleman/fauxgl v0.0.0-20200818143847-27cddc103802
 	github.com/fogleman/gg v1.3.0
