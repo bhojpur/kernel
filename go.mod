@@ -6,7 +6,6 @@ require (
 	github.com/aarzilli/nucular v0.0.0-20220225092833-916d8e586506
 	github.com/aws/aws-sdk-go v1.43.42
 	github.com/dj456119/go-cowsay v0.0.5
-	github.com/djannot/aws-sdk-go v1.1.34
 	github.com/docker/docker v20.10.14+incompatible
 	github.com/firecracker-microvm/firecracker-go-sdk v0.22.0
 	github.com/fogleman/fauxgl v0.0.0-20200818143847-27cddc103802
@@ -16,6 +15,7 @@ require (
 	github.com/gliderlabs/ssh v0.3.3
 	github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
+	github.com/gophercloud/gophercloud v0.24.0
 	github.com/hirochachacha/go-smb2 v1.1.0
 	github.com/jakecoffman/cp v1.1.0
 	github.com/klauspost/cpuid v1.3.1
@@ -24,7 +24,6 @@ require (
 	github.com/pborman/uuid v1.2.1
 	github.com/peterh/liner v1.2.2
 	github.com/prometheus/client_golang v1.4.0
-	github.com/rackspace/gophercloud v1.0.0
 	github.com/rakyll/statik v0.1.7
 	github.com/robertkrimen/otto v0.0.0-20211024170158-b87d35c0b86f
 	github.com/sirupsen/logrus v1.8.1

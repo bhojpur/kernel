@@ -29,10 +29,10 @@ import (
 	kos "github.com/bhojpur/kernel/pkg/os"
 	"github.com/bhojpur/kernel/pkg/types"
 	"github.com/bhojpur/kernel/pkg/util/errors"
-	"github.com/rackspace/gophercloud"
-	"github.com/rackspace/gophercloud/openstack/compute/v2/flavors"
-	"github.com/rackspace/gophercloud/openstack/imageservice/v2/images"
-	"github.com/rackspace/gophercloud/pagination"
+	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
+	"github.com/gophercloud/gophercloud/openstack/imageservice/v2/images"
+	"github.com/gophercloud/gophercloud/pagination"
 	"github.com/sirupsen/logrus"
 )
 

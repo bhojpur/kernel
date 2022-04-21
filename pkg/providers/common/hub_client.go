@@ -30,9 +30,9 @@ import (
 	"github.com/bhojpur/kernel/pkg/config"
 	"github.com/bhojpur/kernel/pkg/types"
 	"github.com/bhojpur/kernel/pkg/util/errors"
-	"github.com/djannot/aws-sdk-go/aws"
-	"github.com/djannot/aws-sdk-go/aws/session"
-	"github.com/djannot/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/layer-x/layerx-commons/lxhttpclient"
 	"github.com/sirupsen/logrus"
 )
@@ -44,7 +44,7 @@ const (
 )
 
 func PullImage(config config.HubConfig, imageName string, writer io.Writer) (*types.Image, error) {
-	//to trigger modified djannot/aws-sdk
+	//to trigger modified aws/aws-sdk
 	os.Setenv("S3_AUTH_PROXY_URL", config.URL)
 
 	//search available images, get user for image name
@@ -83,7 +83,7 @@ func PullImage(config config.HubConfig, imageName string, writer io.Writer) (*ty
 }
 
 func PushImage(config config.HubConfig, image *types.Image, imagePath string) error {
-	//to trigger modified djannot/aws-sdk
+	//to trigger modified aws/aws-sdk
 	os.Setenv("S3_AUTH_PROXY_URL", config.URL)
 	metadata, err := json.Marshal(image)
 	if err != nil {
@@ -107,7 +107,7 @@ func PushImage(config config.HubConfig, image *types.Image, imagePath string) er
 }
 
 func RemoteDeleteImage(config config.HubConfig, imageName string) error {
-	//to trigger modified djannot/aws-sdk
+	//to trigger modified aws/aws-sdk
 	os.Setenv("S3_AUTH_PROXY_URL", config.URL)
 	if err := s3Delete(config, imageKey(config.Username, imageName)); err != nil {
 		return errors.New("deleting image file", err)

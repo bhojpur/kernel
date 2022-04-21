@@ -1,4 +1,4 @@
-package openstack
+package kernel
 
 // Copyright (c) 2018 Bhojpur Consulting Private Limited, India. All rights reserved.
 
@@ -21,48 +21,71 @@ package openstack
 // THE SOFTWARE.
 
 import (
-	"github.com/bhojpur/kernel/pkg/types"
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/imageservice/v2/images"
-	"github.com/gophercloud/gophercloud/pagination"
+	"fmt"
+	"runtime"
+	"syscall"
+	"unsafe"
+
+	"github.com/bhojpur/kernel/pkg/base/drivers/pic"
+	"github.com/bhojpur/kernel/pkg/base/kernel/trap"
+	"github.com/bhojpur/kernel/pkg/base/log"
 )
 
-func (p *OpenstackProvider) ListImages() ([]*types.Image, error) {
-	// Return immediately if no image is managed by Bhojpur Kernel.
-	managedImages := p.state.GetImages()
-	if len(managedImages) < 1 {
-		return []*types.Image{}, nil
-	}
+var (
+	// irqset，IRQ_BASE+1<<bit
+	irqset uintptr
 
-	clientGlance, err := p.newClientGlance()
-	if err != nil {
-		return nil, err
-	}
+	traptask threadptr
+)
 
-	return fetchImages(clientGlance, managedImages)
-}
+func runTrapThread() {
+	runtime.LockOSThread()
+	var trapset uintptr
+	var err syscall.Errno
+	const setsize = unsafe.Sizeof(irqset) * 8
 
-func fetchImages(clientGlance *gophercloud.ServiceClient, managedImages map[string]*types.Image) ([]*types.Image, error) {
-	result := []*types.Image{}
+	my := Mythread()
+	traptask = (threadptr)(unsafe.Pointer(my))
+	log.Infof("[trap] tid:%d", my.id)
 
-	pager := images.List(clientGlance, nil)
-	pager.EachPage(func(page pagination.Page) (bool, error) {
-		imageList, err := images.ExtractImages(page)
-		if err != nil {
-			return false, err
+	for {
+		trapset, _, err = syscall.Syscall(SYS_WAIT_IRQ, 0, 0, 0)
+		if err != 0 {
+			throw("bad SYS_WAIT_IRQ return")
 		}
-
-		for _, i := range imageList {
-			// Filter out images that Bhojpur Kernel is not aware of.
-			image, ok := managedImages[i.ID]
-			if !ok {
+		for i := uintptr(0); i < setsize; i++ {
+			if trapset&(1<<i) == 0 {
 				continue
 			}
-			result = append(result, image)
+			trapno := uintptr(pic.IRQ_BASE + i)
+
+			handler := trap.Handler(int(trapno))
+			if handler == nil {
+				fmt.Printf("trap handler for %d not found\n", trapno)
+				pic.EOI(trapno)
+				continue
+			}
+			handler()
 		}
+	}
+}
 
-		return true, nil
-	})
+//go:nosplit
+func wakeIRQ(no uintptr) {
+	irqset |= 1 << (no - pic.IRQ_BASE)
+	wakeup(&irqset, 1)
+	Yield()
+}
 
-	return result, nil
+//go:nosplit
+func waitIRQ() uintptr {
+	if irqset != 0 {
+		ret := irqset
+		irqset = 0
+		return ret
+	}
+	sleepon(&irqset)
+	ret := irqset
+	irqset = 0
+	return ret
 }

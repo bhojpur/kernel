@@ -1,4 +1,4 @@
-package openstack
+package mm
 
 // Copyright (c) 2018 Bhojpur Consulting Private Limited, India. All rights reserved.
 
@@ -21,48 +21,55 @@ package openstack
 // THE SOFTWARE.
 
 import (
-	"github.com/bhojpur/kernel/pkg/types"
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/imageservice/v2/images"
-	"github.com/gophercloud/gophercloud/pagination"
+	"unsafe"
+
+	"github.com/bhojpur/kernel/pkg/base/kernel/sys"
 )
 
-func (p *OpenstackProvider) ListImages() ([]*types.Image, error) {
-	// Return immediately if no image is managed by Bhojpur Kernel.
-	managedImages := p.state.GetImages()
-	if len(managedImages) < 1 {
-		return []*types.Image{}, nil
-	}
-
-	clientGlance, err := p.newClientGlance()
-	if err != nil {
-		return nil, err
-	}
-
-	return fetchImages(clientGlance, managedImages)
+//go:notinheap
+type memblk struct {
+	next uintptr
 }
 
-func fetchImages(clientGlance *gophercloud.ServiceClient, managedImages map[string]*types.Image) ([]*types.Image, error) {
-	result := []*types.Image{}
+// Pool used to manage fixed size memory block
+//go:notinheap
+type Pool struct {
+	size uintptr
+	head uintptr
+}
 
-	pager := images.List(clientGlance, nil)
-	pager.EachPage(func(page pagination.Page) (bool, error) {
-		imageList, err := images.ExtractImages(page)
-		if err != nil {
-			return false, err
-		}
+// size will align ptr size
+//go:nosplit
+func PoolInit(p *Pool, size uintptr) {
+	const align = sys.PtrSize - 1
+	size = (size + align) &^ align
+	p.size = size
+}
 
-		for _, i := range imageList {
-			// Filter out images that Bhojpur Kernel is not aware of.
-			image, ok := managedImages[i.ID]
-			if !ok {
-				continue
-			}
-			result = append(result, image)
-		}
+//go:nosplit
+func (p *Pool) grow() {
+	start := kmm.alloc()
+	end := start + PGSIZE
+	for v := start; v+p.size <= end; v += p.size {
+		p.Free(v)
+	}
+}
 
-		return true, nil
-	})
+//go:nosplit
+func (p *Pool) Alloc() uintptr {
+	if p.head == 0 {
+		p.grow()
+	}
+	ret := p.head
+	h := (*memblk)(unsafe.Pointer(p.head))
+	p.head = h.next
+	sys.Memclr(ret, int(p.size))
+	return ret
+}
 
-	return result, nil
+//go:nosplit
+func (p *Pool) Free(ptr uintptr) {
+	v := (*memblk)(unsafe.Pointer(ptr))
+	v.next = p.head
+	p.head = ptr
 }

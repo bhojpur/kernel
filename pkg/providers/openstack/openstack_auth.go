@@ -25,8 +25,8 @@ import (
 	"os"
 
 	"github.com/bhojpur/kernel/pkg/config"
-	"github.com/rackspace/gophercloud"
-	"github.com/rackspace/gophercloud/openstack"
+	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack"
 )
 
 type openstackHandle struct {

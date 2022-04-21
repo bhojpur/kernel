@@ -1,4 +1,4 @@
-package openstack
+package kernel
 
 // Copyright (c) 2018 Bhojpur Consulting Private Limited, India. All rights reserved.
 
@@ -21,48 +21,62 @@ package openstack
 // THE SOFTWARE.
 
 import (
-	"github.com/bhojpur/kernel/pkg/types"
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/imageservice/v2/images"
-	"github.com/gophercloud/gophercloud/pagination"
+	"unsafe"
+
+	"github.com/bhojpur/kernel/pkg/base/drivers/qemu"
+	"github.com/bhojpur/kernel/pkg/base/drivers/uart"
+	"github.com/bhojpur/kernel/pkg/base/kernel/sys"
+	"github.com/bhojpur/kernel/pkg/base/log"
 )
 
-func (p *OpenstackProvider) ListImages() ([]*types.Image, error) {
-	// Return immediately if no image is managed by Bhojpur Kernel.
-	managedImages := p.state.GetImages()
-	if len(managedImages) < 1 {
-		return []*types.Image{}, nil
-	}
+var (
+	panicPcs [32]uintptr
+)
 
-	clientGlance, err := p.newClientGlance()
-	if err != nil {
-		return nil, err
-	}
-
-	return fetchImages(clientGlance, managedImages)
+//go:nosplit
+func throw(msg string) {
+	sys.Cli()
+	tf := Mythread().tf
+	throwtf(tf, msg)
 }
 
-func fetchImages(clientGlance *gophercloud.ServiceClient, managedImages map[string]*types.Image) ([]*types.Image, error) {
-	result := []*types.Image{}
+//go:nosplit
+func throwtf(tf *trapFrame, msg string) {
+	sys.Cli()
+	n := callers(tf, panicPcs[:])
+	uart.WriteString(msg)
+	uart.WriteByte('\n')
 
-	pager := images.List(clientGlance, nil)
-	pager.EachPage(func(page pagination.Page) (bool, error) {
-		imageList, err := images.ExtractImages(page)
-		if err != nil {
-			return false, err
+	log.PrintStr("0x")
+	log.PrintHex(tf.IP)
+	log.PrintStr("\n")
+	for i := 0; i < n; i++ {
+		log.PrintStr("0x")
+		log.PrintHex(panicPcs[i])
+		log.PrintStr("\n")
+	}
+
+	qemu.Exit(0xff)
+	for {
+	}
+}
+
+//go:nosplit
+func callers(tf *trapFrame, pcs []uintptr) int {
+	fp := tf.BP
+	var i int
+	for i = 0; i < len(pcs); i++ {
+		pc := deref(fp + 8)
+		pcs[i] = pc
+		fp = deref(fp)
+		if fp == 0 {
+			break
 		}
+	}
+	return i
+}
 
-		for _, i := range imageList {
-			// Filter out images that Bhojpur Kernel is not aware of.
-			image, ok := managedImages[i.ID]
-			if !ok {
-				continue
-			}
-			result = append(result, image)
-		}
-
-		return true, nil
-	})
-
-	return result, nil
+//go:nosplit
+func deref(addr uintptr) uintptr {
+	return *(*uintptr)(unsafe.Pointer(addr))
 }

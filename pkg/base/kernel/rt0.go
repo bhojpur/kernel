@@ -1,4 +1,4 @@
-package openstack
+package kernel
 
 // Copyright (c) 2018 Bhojpur Consulting Private Limited, India. All rights reserved.
 
@@ -21,48 +21,36 @@ package openstack
 // THE SOFTWARE.
 
 import (
-	"github.com/bhojpur/kernel/pkg/types"
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/imageservice/v2/images"
-	"github.com/gophercloud/gophercloud/pagination"
+	"github.com/bhojpur/kernel/pkg/base/drivers/multiboot"
+	"github.com/bhojpur/kernel/pkg/base/drivers/pic"
+	"github.com/bhojpur/kernel/pkg/base/drivers/uart"
+	"github.com/bhojpur/kernel/pkg/base/kernel/mm"
 )
 
-func (p *OpenstackProvider) ListImages() ([]*types.Image, error) {
-	// Return immediately if no image is managed by Bhojpur Kernel.
-	managedImages := p.state.GetImages()
-	if len(managedImages) < 1 {
-		return []*types.Image{}, nil
-	}
+//go:nosplit
+func rt0()
 
-	clientGlance, err := p.newClientGlance()
-	if err != nil {
-		return nil, err
-	}
+//go:nosplit
+func go_entry()
 
-	return fetchImages(clientGlance, managedImages)
-}
+//go:nosplit
+func wrmsr(reg uint32, value uintptr)
 
-func fetchImages(clientGlance *gophercloud.ServiceClient, managedImages map[string]*types.Image) ([]*types.Image, error) {
-	result := []*types.Image{}
+//go:nosplit
+func rdmsr(reg uint32) (value uintptr)
 
-	pager := images.List(clientGlance, nil)
-	pager.EachPage(func(page pagination.Page) (bool, error) {
-		imageList, err := images.ExtractImages(page)
-		if err != nil {
-			return false, err
-		}
-
-		for _, i := range imageList {
-			// Filter out images that Bhojpur Kernel is not aware of.
-			image, ok := managedImages[i.ID]
-			if !ok {
-				continue
-			}
-			result = append(result, image)
-		}
-
-		return true, nil
-	})
-
-	return result, nil
+//go:nosplit
+func preinit(magic, mbiptr uintptr) {
+	simdInit()
+	gdtInit()
+	idtInit()
+	multiboot.Init(magic, mbiptr)
+	mm.Init()
+	uart.PreInit()
+	syscallInit()
+	trapInit()
+	threadInit()
+	pic.Init()
+	timerInit()
+	schedule()
 }

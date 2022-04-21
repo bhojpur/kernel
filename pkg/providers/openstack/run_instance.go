@@ -25,8 +25,8 @@ import (
 
 	"github.com/bhojpur/kernel/pkg/types"
 	"github.com/bhojpur/kernel/pkg/util/errors"
-	"github.com/rackspace/gophercloud"
-	"github.com/rackspace/gophercloud/openstack/compute/v2/servers"
+	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	"github.com/sirupsen/logrus"
 )
 

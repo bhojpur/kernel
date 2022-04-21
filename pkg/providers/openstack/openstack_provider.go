@@ -27,7 +27,7 @@ import (
 
 	"github.com/bhojpur/kernel/pkg/config"
 	"github.com/bhojpur/kernel/pkg/state"
-	"github.com/rackspace/gophercloud"
+	"github.com/gophercloud/gophercloud"
 )
 
 type OpenstackProvider struct {

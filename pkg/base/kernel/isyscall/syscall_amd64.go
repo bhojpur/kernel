@@ -1,4 +1,4 @@
-package openstack
+package isyscall
 
 // Copyright (c) 2018 Bhojpur Consulting Private Limited, India. All rights reserved.
 
@@ -20,49 +20,58 @@ package openstack
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import (
-	"github.com/bhojpur/kernel/pkg/types"
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/imageservice/v2/images"
-	"github.com/gophercloud/gophercloud/pagination"
-)
+import "unsafe"
 
-func (p *OpenstackProvider) ListImages() ([]*types.Image, error) {
-	// Return immediately if no image is managed by Bhojpur Kernel.
-	managedImages := p.state.GetImages()
-	if len(managedImages) < 1 {
-		return []*types.Image{}, nil
-	}
+// must sync with kernel.trapFrame
+type trapFrame struct {
+	AX, BX, CX, DX    uintptr
+	BP, SI, DI, R8    uintptr
+	R9, R10, R11, R12 uintptr
+	R13, R14, R15     uintptr
 
-	clientGlance, err := p.newClientGlance()
-	if err != nil {
-		return nil, err
-	}
+	Trapno, Err uintptr
 
-	return fetchImages(clientGlance, managedImages)
+	// pushed by hardware
+	IP, CS, FLAGS, SP, SS uintptr
 }
 
-func fetchImages(clientGlance *gophercloud.ServiceClient, managedImages map[string]*types.Image) ([]*types.Image, error) {
-	result := []*types.Image{}
+func NewRequest(tf uintptr) Request {
+	return Request{
+		tf: (*trapFrame)(unsafe.Pointer(tf)),
+	}
+}
 
-	pager := images.List(clientGlance, nil)
-	pager.EachPage(func(page pagination.Page) (bool, error) {
-		imageList, err := images.ExtractImages(page)
-		if err != nil {
-			return false, err
-		}
+//go:nosplit
+func (t *trapFrame) NO() uintptr {
+	return t.AX
+}
 
-		for _, i := range imageList {
-			// Filter out images that Bhojpur Kernel is not aware of.
-			image, ok := managedImages[i.ID]
-			if !ok {
-				continue
-			}
-			result = append(result, image)
-		}
+//go:nosplit
+func (t *trapFrame) Arg(n int) uintptr {
+	switch n {
+	case 0:
+		return t.DI
+	case 1:
+		return t.SI
+	case 2:
+		return t.DX
+	case 3:
+		return t.R10
+	case 4:
+		return t.R8
+	case 5:
+		return t.R9
+	default:
+		return 0
+	}
+}
 
-		return true, nil
-	})
+//go:nosplit
+func (t *trapFrame) SetRet(v uintptr) {
+	t.AX = v
+}
 
-	return result, nil
+//go:nosplit
+func (t *trapFrame) Ret() uintptr {
+	return t.AX
 }
